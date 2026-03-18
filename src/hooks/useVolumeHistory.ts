@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { OptionContract } from "@/types/scanner";
 
 export interface VolumeDelta {
@@ -61,7 +61,7 @@ export function useVolumeHistory(contracts: OptionContract[]) {
         });
     }, [contracts]);
 
-    const getDeltas = (timeframe: Timeframe): VolumeDelta[] => {
+    const getDeltas = useCallback((timeframe: Timeframe): VolumeDelta[] => {
         if (history.length < 2) return [];
 
         const now = Date.now();
@@ -71,7 +71,10 @@ export function useVolumeHistory(contracts: OptionContract[]) {
         const startSnapshot = history.find((s) => s.timestamp >= targetTime) || history[0];
         const endSnapshot = history[history.length - 1];
 
-        if (startSnapshot === endSnapshot) return [];
+        if (!startSnapshot || !endSnapshot || startSnapshot === endSnapshot) return [];
+
+        const startIndex = history.indexOf(startSnapshot);
+        if (startIndex === -1) return [];
 
         return contracts.map((c) => {
             const start = startSnapshot.contracts[c.trading_symbol];
@@ -89,15 +92,12 @@ export function useVolumeHistory(contracts: OptionContract[]) {
                 };
             }
 
-            // We need to calculate cumulative buy/sell between start and end
-            // However, with 1s polling, we can sum up the deltas in between
             let buyVol = 0;
             let sellVol = 0;
 
-            const startIndex = history.indexOf(startSnapshot);
             for (let i = startIndex + 1; i < history.length; i++) {
-                const prev = history[i - 1].contracts[c.trading_symbol];
-                const curr = history[i].contracts[c.trading_symbol];
+                const prev = history[i - 1]?.contracts[c.trading_symbol];
+                const curr = history[i]?.contracts[c.trading_symbol];
 
                 if (prev && curr) {
                     const delta = curr.volume - prev.volume;
@@ -109,7 +109,6 @@ export function useVolumeHistory(contracts: OptionContract[]) {
                         } else if (curr.ltp !== prev.ltp) {
                             isBuy = curr.ltp > prev.ltp;
                         } else {
-                            // If no change, favor the last known direction or default to Buy
                             isBuy = buyVol >= sellVol;
                         }
 
@@ -132,7 +131,7 @@ export function useVolumeHistory(contracts: OptionContract[]) {
                 lastLTP: c.ltp,
             };
         });
-    };
+    }, [history, contracts]);
 
     return { getDeltas };
 }

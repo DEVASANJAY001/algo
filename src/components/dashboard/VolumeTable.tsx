@@ -5,6 +5,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Timeframe, VolumeDelta } from "@/hooks/useVolumeHistory";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 interface VolumeTableProps {
     deltas: VolumeDelta[];
@@ -12,10 +13,52 @@ interface VolumeTableProps {
     onTimeframeChange: (tf: Timeframe) => void;
 }
 
+type SortColumn = "buyVolume" | "sellVolume" | "netVolume" | "symbol";
+type SortDirection = "asc" | "desc";
+
 export function VolumeTable({ deltas, timeframe, onTimeframeChange }: VolumeTableProps) {
-    const sortedDeltas = useMemo(() => {
-        return [...deltas].sort((a, b) => b.totalVolume - a.totalVolume);
+    const [sortConfig, setSortConfig] = useState<{ column: SortColumn; direction: SortDirection }>({
+        column: "netVolume",
+        direction: "desc",
+    });
+
+    const processedDeltas = useMemo(() => {
+        return deltas.map(d => ({
+            ...d,
+            netVolume: d.buyVolume - d.sellVolume
+        }));
     }, [deltas]);
+
+    const sortedDeltas = useMemo(() => {
+        const sorted = [...processedDeltas].sort((a, b) => {
+            const aVal = a[sortConfig.column];
+            const bVal = b[sortConfig.column];
+
+            if (typeof aVal === "string" && typeof bVal === "string") {
+                return sortConfig.direction === "asc"
+                    ? aVal.localeCompare(bVal)
+                    : bVal.localeCompare(aVal);
+            }
+
+            if (typeof aVal === "number" && typeof bVal === "number") {
+                return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
+            }
+            return 0;
+        });
+        return sorted;
+    }, [processedDeltas, sortConfig]);
+
+    const handleSort = (column: SortColumn) => {
+        setSortConfig(prev => ({
+            column,
+            direction: prev.column === column && prev.direction === "desc" ? "asc" : "desc",
+        }));
+    };
+
+    const SortIcon = ({ column }: { column: SortColumn }) => {
+        if (sortConfig.column !== column) return <ArrowUpDown className="ml-1 h-3 w-3 opacity-50" />;
+        return sortConfig.direction === "asc" ? <ArrowUp className="ml-1 h-3 w-3" /> : <ArrowDown className="ml-1 h-3 w-3" />;
+    };
 
     if (deltas.length === 0) {
         return (
@@ -29,7 +72,7 @@ export function VolumeTable({ deltas, timeframe, onTimeframeChange }: VolumeTabl
         <div className="space-y-2">
             <div className="flex items-center justify-between px-3 py-1 bg-secondary/30 border-b border-border/50">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Sort by Highest Volume Delta
+                    Volume Delta Analysis
                 </span>
                 <Select value={timeframe} onValueChange={(v) => onTimeframeChange(v as Timeframe)}>
                     <SelectTrigger className="w-[80px] h-6 text-[10px] bg-background border-border">
@@ -51,10 +94,30 @@ export function VolumeTable({ deltas, timeframe, onTimeframeChange }: VolumeTabl
                     <TableHeader>
                         <TableRow className="border-border hover:bg-transparent">
                             <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground w-8">#</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Symbol</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground text-right font-bold text-success">Buy Vol</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground text-right font-bold text-danger">Sell Vol</TableHead>
-                            <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground text-right font-bold">Total Vol</TableHead>
+                            <TableHead
+                                className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                onClick={() => handleSort("symbol")}
+                            >
+                                <div className="flex items-center">Symbol <SortIcon column="symbol" /></div>
+                            </TableHead>
+                            <TableHead
+                                className="text-[10px] uppercase tracking-wider text-muted-foreground text-right font-bold text-success cursor-pointer hover:text-success/80 transition-colors"
+                                onClick={() => handleSort("buyVolume")}
+                            >
+                                <div className="flex items-center justify-end">Buy Vol <SortIcon column="buyVolume" /></div>
+                            </TableHead>
+                            <TableHead
+                                className="text-[10px] uppercase tracking-wider text-muted-foreground text-right font-bold text-danger cursor-pointer hover:text-danger/80 transition-colors"
+                                onClick={() => handleSort("sellVolume")}
+                            >
+                                <div className="flex items-center justify-end">Sell Vol <SortIcon column="sellVolume" /></div>
+                            </TableHead>
+                            <TableHead
+                                className="text-[10px] uppercase tracking-wider text-muted-foreground text-right font-bold cursor-pointer hover:text-foreground transition-colors"
+                                onClick={() => handleSort("netVolume")}
+                            >
+                                <div className="flex items-center justify-end">Net Vol <SortIcon column="netVolume" /></div>
+                            </TableHead>
                             <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground text-right">LTP</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -80,8 +143,9 @@ export function VolumeTable({ deltas, timeframe, onTimeframeChange }: VolumeTabl
                                 <TableCell className="text-[11px] text-right tabular-nums text-danger font-medium py-1">
                                     {d.sellVolume > 0 ? d.sellVolume.toLocaleString() : "-"}
                                 </TableCell>
-                                <TableCell className="text-[11px] text-right tabular-nums font-bold py-1">
-                                    {d.totalVolume > 0 ? d.totalVolume.toLocaleString() : "-"}
+                                <TableCell className={`text-[11px] text-right tabular-nums font-bold py-1 ${d.netVolume > 0 ? "text-success" : d.netVolume < 0 ? "text-danger" : ""
+                                    }`}>
+                                    {d.netVolume !== 0 ? (d.netVolume > 0 ? "+" : "") + d.netVolume.toLocaleString() : "-"}
                                 </TableCell>
                                 <TableCell className="text-[11px] text-right tabular-nums text-muted-foreground py-1">
                                     ₹{d.lastLTP.toFixed(2)}
