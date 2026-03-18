@@ -16,7 +16,10 @@ import { IndexChartPanel } from "@/components/dashboard/IndexChartPanel";
 import { FlexibleChartWorkspace } from "@/components/dashboard/FlexibleChartWorkspace";
 import { PatternPanel } from "@/components/dashboard/PatternPanel";
 import { OIAnalysisPanel } from "@/components/dashboard/OIAnalysisPanel";
+import { VolumeTable } from "@/components/dashboard/VolumeTable";
+import { useVolumeHistory, Timeframe } from "@/hooks/useVolumeHistory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -35,9 +38,12 @@ const Index = () => {
   const [expiry, setExpiry] = useState<string>("");
   const [optionFilter, setOptionFilter] = useState<OptionFilter>("ALL");
   const [sortBy, setSortBy] = useState<SortBy>("confidence");
+  const [volumeTimeframe, setVolumeTimeframe] = useState<Timeframe>("5s");
   const mode: ScanMode = activeTab === "herozero" ? "herozero" : "scanner";
 
   const { data, loading, error, lastUpdate, isCached } = useScanner(indexType, expiry || undefined, mode);
+  const { getDeltas } = useVolumeHistory(data?.contracts || []);
+  const volumeDeltas = useMemo(() => getDeltas(volumeTimeframe), [data?.contracts, volumeTimeframe, getDeltas]);
 
   const nLayerStatus = useMemo(() => {
     if (!data?.candle_data) return null;
@@ -201,8 +207,8 @@ const Index = () => {
                   key={f}
                   onClick={() => setOptionFilter(f)}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${optionFilter === f
-                      ? f === "CE" ? "bg-success/20 text-success" : f === "PE" ? "bg-danger/20 text-danger" : "bg-primary/20 text-primary"
-                      : "text-muted-foreground hover:text-foreground"
+                    ? f === "CE" ? "bg-success/20 text-success" : f === "PE" ? "bg-danger/20 text-danger" : "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                     }`}
                 >
                   {f}
@@ -323,20 +329,35 @@ const Index = () => {
               indexName={indexType}
             />
 
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-1 px-3 pt-3">
-                <CardTitle className="text-xs text-muted-foreground">
-                  Top {filteredContracts.length} Contracts – {indexType}
-                  {optionFilter !== "ALL" && (
-                    <span className={`text-[9px] ml-2 px-1.5 py-0.5 rounded ${optionFilter === "CE" ? "bg-success/20 text-success" : "bg-danger/20 text-danger"}`}>
-                      {optionFilter} only
-                    </span>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ContractsTable contracts={filteredContracts} />
-              </CardContent>
+            <Card className="border-border bg-card overflow-hidden">
+              <Tabs defaultValue="list" className="w-full">
+                <CardHeader className="pb-1 px-3 pt-3 flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-xs text-muted-foreground">
+                    Top {filteredContracts.length} Contracts – {indexType}
+                    {optionFilter !== "ALL" && (
+                      <span className={`text-[9px] ml-2 px-1.5 py-0.5 rounded ${optionFilter === "CE" ? "bg-success/20 text-success" : "bg-danger/20 text-danger"}`}>
+                        {optionFilter} only
+                      </span>
+                    )}
+                  </CardTitle>
+                  <TabsList className="h-7 bg-secondary/50 p-0.5">
+                    <TabsTrigger value="list" className="text-[10px] h-6 px-3">Table</TabsTrigger>
+                    <TabsTrigger value="volume" className="text-[10px] h-6 px-3">Volume Analysis</TabsTrigger>
+                  </TabsList>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <TabsContent value="list" className="m-0">
+                    <ContractsTable contracts={filteredContracts} />
+                  </TabsContent>
+                  <TabsContent value="volume" className="m-0">
+                    <VolumeTable
+                      deltas={volumeDeltas.filter(d => optionFilter === "ALL" || d.type === optionFilter)}
+                      timeframe={volumeTimeframe}
+                      onTimeframeChange={setVolumeTimeframe}
+                    />
+                  </TabsContent>
+                </CardContent>
+              </Tabs>
             </Card>
           </>
         )}

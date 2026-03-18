@@ -33,6 +33,8 @@ export interface OptionContract {
   target1?: number;
   target2?: number;
   target3?: number;
+  best_bid?: number;
+  best_ask?: number;
 }
 
 export interface Signal {

@@ -35,6 +35,8 @@ interface OptionContract {
   max_pain?: number;
   hero_score?: number;
   strike_distance?: number;
+  best_bid?: number;
+  best_ask?: number;
 }
 
 interface Candle {
@@ -504,7 +506,7 @@ interface StrikeSRResult {
 function calculateStrikeSR(contracts: OptionContract[], spotPrice: number, strikeGap: number): StrikeSRResult[] {
   // Group by strike
   const strikeMap = new Map<number, { ce_oi: number; pe_oi: number; ce_oi_change: number; pe_oi_change: number }>();
-  
+
   for (const c of contracts) {
     if (!strikeMap.has(c.strike)) {
       strikeMap.set(c.strike, { ce_oi: 0, pe_oi: 0, ce_oi_change: 0, pe_oi_change: 0 });
@@ -563,11 +565,11 @@ interface SRLevel {
 function findPivotPoints(candles: Candle[], lookback = 3): { supports: number[]; resistances: number[] } {
   const supports: number[] = [];
   const resistances: number[] = [];
-  
+
   for (let i = lookback; i < candles.length - lookback; i++) {
     let isSwingLow = true;
     let isSwingHigh = true;
-    
+
     for (let j = 1; j <= lookback; j++) {
       if (candles[i].low >= candles[i - j].low || candles[i].low >= candles[i + j].low) {
         isSwingLow = false;
@@ -576,11 +578,11 @@ function findPivotPoints(candles: Candle[], lookback = 3): { supports: number[];
         isSwingHigh = false;
       }
     }
-    
+
     if (isSwingLow) supports.push(candles[i].low);
     if (isSwingHigh) resistances.push(candles[i].high);
   }
-  
+
   return { supports, resistances };
 }
 
@@ -589,7 +591,7 @@ function clusterLevels(prices: number[], threshold: number): { price: number; st
   const sorted = [...prices].sort((a, b) => a - b);
   const clusters: { prices: number[] }[] = [];
   let currentCluster = [sorted[0]];
-  
+
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] - sorted[i - 1] <= threshold) {
       currentCluster.push(sorted[i]);
@@ -599,7 +601,7 @@ function clusterLevels(prices: number[], threshold: number): { price: number; st
     }
   }
   clusters.push({ prices: currentCluster });
-  
+
   return clusters.map(c => ({
     price: Number((c.prices.reduce((a, b) => a + b, 0) / c.prices.length).toFixed(2)),
     strength: c.prices.length,
@@ -628,16 +630,16 @@ async function calculateSupportResistance(
   };
   const fromStr = formatDate(from, "09:00:00");
   const toStr = formatDate(now, "15:30:00");
-  
+
   const timeframes = [
     { interval: "minute", label: "1min", clusterThreshold: 5 },
     { interval: "5minute", label: "5min", clusterThreshold: 10 },
     { interval: "15minute", label: "15min", clusterThreshold: 15 },
   ];
-  
+
   const allLevels: SRLevel[] = [];
   const candleSets: CandleSet[] = [];
-  
+
   for (const tf of timeframes) {
     try {
       const res = await fetch(
@@ -645,25 +647,25 @@ async function calculateSupportResistance(
         { headers: kiteHeaders }
       );
       const data = await res.json();
-      
+
       if (data?.data?.candles) {
         const candles: Candle[] = data.data.candles.map((c: any[]) => ({
           timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
         }));
-        
+
         // Keep last N candles for chart display
         const chartLimit = tf.label === "1min" ? 120 : tf.label === "5min" ? 80 : 50;
         candleSets.push({ timeframe: tf.label, candles: candles.slice(-chartLimit) });
-        
+
         const { supports, resistances } = findPivotPoints(candles, tf.label === "1min" ? 2 : 3);
-        
+
         const range = spotPrice * 0.02;
         const nearSupports = supports.filter(p => Math.abs(p - spotPrice) <= range);
         const nearResistances = resistances.filter(p => Math.abs(p - spotPrice) <= range);
-        
+
         const clusteredSupports = clusterLevels(nearSupports, tf.clusterThreshold);
         const clusteredResistances = clusterLevels(nearResistances, tf.clusterThreshold);
-        
+
         for (const s of clusteredSupports) {
           allLevels.push({ timeframe: tf.label, level_type: "support", price: s.price, strength: s.strength });
         }
@@ -675,7 +677,7 @@ async function calculateSupportResistance(
       console.error(`S/R fetch error for ${tf.label}:`, e);
     }
   }
-  
+
   return { levels: allLevels, candleSets };
 }
 
@@ -723,8 +725,8 @@ function calcGreeks(spotPrice: number, strike: number, iv: number, daysToExpiry:
 function buildSymbols(indexName: string, expiryDate: Date, strikes: number[], isMonthlyExpiry: boolean): string[] {
   const instruments: string[] = [];
   const year = expiryDate.getFullYear().toString().slice(-2);
-  const monthCodes = ["1","2","3","4","5","6","7","8","9","O","N","D"];
-  const monthNames = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  const monthCodes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "O", "N", "D"];
+  const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
   const monthCode = monthCodes[expiryDate.getMonth()];
   const mon = monthNames[expiryDate.getMonth()];
   const day = String(expiryDate.getDate()).padStart(2, "0");
@@ -1077,10 +1079,10 @@ Deno.serve(async (req) => {
             const bestBid = v.depth?.buy?.[0]?.price || 0;
             const bestAsk = v.depth?.sell?.[0]?.price || 0;
             const bidAskSpread = bestAsk > 0 && bestBid > 0 ? bestAsk - bestBid : 0;
-            
+
             // Approximate theta: -(ltp / daysToExpiry) for 0DTE decay
             const approxTheta = daysToExpiry > 0 ? -((v.last_price || 0) / daysToExpiry) : 0;
-            
+
             // Gamma exposure: gamma * oi * spot^2 / 100 (simplified near-ATM measure)
             const gammaExp = Math.abs(strikePrice - spotPrice) <= strikeGap * 2
               ? (greeks.gamma * (v.oi || 0) * spotPrice * spotPrice) / 1e8
@@ -1098,6 +1100,8 @@ Deno.serve(async (req) => {
               theta: Number(approxTheta.toFixed(4)),
               bid_ask_spread: Number(bidAskSpread.toFixed(2)),
               gamma_exposure: Number(gammaExp.toFixed(2)),
+              best_bid: bestBid,
+              best_ask: bestAsk,
             });
           }
         }
@@ -1126,12 +1130,12 @@ Deno.serve(async (req) => {
       const srResult = await calculateSupportResistance(kiteHeaders, indexName, spotPrice);
       srLevels = srResult.levels;
       candleSets = srResult.candleSets;
-      
+
       // Store S/R levels in DB
       if (srLevels.length > 0) {
         // Clear old levels for this index
         await supabase.from("support_resistance").delete().eq("index_name", indexName);
-        
+
         // Insert new levels
         const rows = srLevels.map(l => ({
           index_name: indexName,
@@ -1150,7 +1154,7 @@ Deno.serve(async (req) => {
     // =================== PATTERN DETECTION ===================
     let chartPatterns: ChartPattern[] = [];
     let candlestickPatterns: CandlestickPattern[] = [];
-    
+
     // Use the 5min candles for pattern detection
     const fiveMinCandles = candleSets.find(cs => cs.timeframe === "5min")?.candles || [];
     if (fiveMinCandles.length > 0) {
@@ -1200,7 +1204,7 @@ Deno.serve(async (req) => {
         const now = new Date();
         const from = new Date(now);
         from.setDate(from.getDate() - 5);
-        const fmtD = (d: Date, t: string) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${t}`;
+        const fmtD = (d: Date, t: string) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${t}`;
         const fromStr = fmtD(from, "09:00:00");
         const toStr = fmtD(now, "15:30:00");
 
@@ -1221,7 +1225,7 @@ Deno.serve(async (req) => {
       // IST time check
       const istTimeInMinutes = ist.getHours() * 60 + ist.getMinutes();
       const timeWindowOk = istTimeInMinutes >= modeConfig.timeWindowStart && istTimeInMinutes <= modeConfig.timeWindowEnd;
-      flowSteps.push({ name: "Time Window", passed: timeWindowOk, detail: timeWindowOk ? `${Math.floor(modeConfig.timeWindowStart/60)}:${String(modeConfig.timeWindowStart%60).padStart(2,"0")} - ${Math.floor(modeConfig.timeWindowEnd/60)}:${String(modeConfig.timeWindowEnd%60).padStart(2,"0")}` : "Outside trading window" });
+      flowSteps.push({ name: "Time Window", passed: timeWindowOk, detail: timeWindowOk ? `${Math.floor(modeConfig.timeWindowStart / 60)}:${String(modeConfig.timeWindowStart % 60).padStart(2, "0")} - ${Math.floor(modeConfig.timeWindowEnd / 60)}:${String(modeConfig.timeWindowEnd % 60).padStart(2, "0")}` : "Outside trading window" });
 
       // Lunch session check
       const isLunch = istTimeInMinutes >= 720 && istTimeInMinutes <= 780;
@@ -1503,7 +1507,7 @@ Deno.serve(async (req) => {
         const now = new Date();
         const from = new Date(now);
         from.setDate(from.getDate() - 5);
-        const fmtD2 = (d: Date, t: string) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${t}`;
+        const fmtD2 = (d: Date, t: string) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${t}`;
         const fromStr = fmtD2(from, "09:00:00");
         const toStr = fmtD2(now, "15:30:00");
 
@@ -1580,7 +1584,7 @@ Deno.serve(async (req) => {
         const distOk = distPts <= maxDistPts;
         const emaOk = contract.ema20 && spotPrice > 0 &&
           ((contract.option_type === "CE" && spotPrice > contract.ema20) ||
-           (contract.option_type === "PE" && spotPrice < contract.ema20));
+            (contract.option_type === "PE" && spotPrice < contract.ema20));
 
         // --- WEIGHTED SCORE COMPONENTS (0-1 each, total weights = 1.10, normalized) ---
         // OI (25%)
