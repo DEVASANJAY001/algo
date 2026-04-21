@@ -11,7 +11,7 @@ export interface VolumeDelta {
     lastLTP: number;
 }
 
-export type Timeframe = "5s" | "10s" | "30s" | "1m" | "5m" | "15m";
+export type Timeframe = "5s" | "10s" | "30s" | "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "3h" | "4h" | "5h" | "6h" | "7h" | "8h";
 
 const TIMEFRAME_MAP: Record<Timeframe, number> = {
     "5s": 5,
@@ -20,6 +20,15 @@ const TIMEFRAME_MAP: Record<Timeframe, number> = {
     "1m": 60,
     "5m": 300,
     "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "2h": 7200,
+    "3h": 10800,
+    "4h": 14400,
+    "5h": 18000,
+    "6h": 21600,
+    "7h": 25200,
+    "8h": 28800,
 };
 
 interface Snapshot {
@@ -55,9 +64,9 @@ export function useVolumeHistory(contracts: OptionContract[]) {
 
         setHistory((prev) => {
             const next = [...prev, snapshot];
-            // Keep only up to 15 minutes of history (900 seconds)
-            const fifteenMinAgo = now - 15 * 60 * 1000;
-            return next.filter((s) => s.timestamp >= fifteenMinAgo);
+            // Keep only up to 8 hours of history (28800 seconds)
+            const eightHoursAgo = now - 8 * 60 * 60 * 1000;
+            return next.filter((s) => s.timestamp >= eightHoursAgo);
         });
     }, [contracts]);
 

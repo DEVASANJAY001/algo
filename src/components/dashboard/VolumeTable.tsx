@@ -85,6 +85,15 @@ export function VolumeTable({ deltas, timeframe, onTimeframeChange }: VolumeTabl
                         <SelectItem value="1m" className="text-[10px]">1 Min</SelectItem>
                         <SelectItem value="5m" className="text-[10px]">5 Min</SelectItem>
                         <SelectItem value="15m" className="text-[10px]">15 Min</SelectItem>
+                        <SelectItem value="30m" className="text-[10px]">30 Min</SelectItem>
+                        <SelectItem value="1h" className="text-[10px]">1 Hr</SelectItem>
+                        <SelectItem value="2h" className="text-[10px]">2 Hr</SelectItem>
+                        <SelectItem value="3h" className="text-[10px]">3 Hr</SelectItem>
+                        <SelectItem value="4h" className="text-[10px]">4 Hr</SelectItem>
+                        <SelectItem value="5h" className="text-[10px]">5 Hr</SelectItem>
+                        <SelectItem value="6h" className="text-[10px]">6 Hr</SelectItem>
+                        <SelectItem value="7h" className="text-[10px]">7 Hr</SelectItem>
+                        <SelectItem value="8h" className="text-[10px]">8 Hr</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
